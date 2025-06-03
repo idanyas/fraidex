@@ -6,7 +6,7 @@ on:
   workflow_dispatch: # Allows manual triggering
 
 jobs:
-  parse_and_release:
+  scrape_and_release:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed to create releases and tags
@@ -24,6 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
+          sudo apt-get update && sudo apt-get install -y brotli # Install brotli CLI tool
 
       - name: Run parser script
         id: parser
@@ -51,12 +52,10 @@ jobs:
         if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
         run: |
           python -m json.tool fraidex.json fraidex.min.json --no-indent
-          # Alternative if json.tool with --no-indent isn't available or behaves unexpectedly in older Pythons:
-          # python -c "import json; data = json.load(open('fraidex.json')); json.dump(data, open('fraidex.min.json', 'w'), separators=(',', ':'))"
           echo "Created fraidex.min.json"
 
       - name: Check if fraidex.min.json was generated
-        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true' # Relies on the first check
+        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
         id: check_min_json
         run: |
           if [ -f fraidex.min.json ]; then
@@ -74,13 +73,46 @@ jobs:
             exit 1
           fi
 
-      - name: Set current time for release body
+      - name: Create compressed versions (Gzip and Brotli)
         if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true'
+        run: |
+          echo "Compressing fraidex.min.json..."
+          gzip -k -f -9 fraidex.min.json # -k (keep original), -f (force), -9 (best compression) -> fraidex.min.json.gz
+          brotli -k -f -Z fraidex.min.json # -k (keep original), -f (force), -Z (best quality) -> fraidex.min.json.br
+          echo "Created fraidex.min.json.gz and fraidex.min.json.br"
+
+      - name: Check if compressed files were generated
+        if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true' # Relies on min_json check
+        id: check_compressed_files
+        run: |
+          gz_exists=false
+          br_exists=false
+          if [ -f fraidex.min.json.gz ] && [ -s fraidex.min.json.gz ]; then
+            gz_exists=true
+            echo "Generated fraidex.min.json.gz found and has content."
+          else
+            echo "Error or empty: fraidex.min.json.gz not found or is empty after compression!"
+          fi
+          if [ -f fraidex.min.json.br ] && [ -s fraidex.min.json.br ]; then
+            br_exists=true
+            echo "Generated fraidex.min.json.br found and has content."
+          else
+            echo "Error or empty: fraidex.min.json.br not found or is empty after compression!"
+          fi
+          if [ "$gz_exists" = true ] && [ "$br_exists" = true ]; then
+            echo "all_compressed_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "all_compressed_exist=false" >> $GITHUB_OUTPUT
+            exit 1 # Fail if compressed files are missing/empty
+          fi
+
+      - name: Set current time for release body
+        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
         id: current_time
         run: echo "time=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
 
       - name: Delete previous data-latest release and tag
-        if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true'
+        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
         run: |
           echo "Attempting to delete previous 'data-latest' release and tag..."
           gh release delete data-latest -y --cleanup-tag || echo "No previous 'data-latest' release or tag to delete, or deletion failed (which is fine if it didn't exist)."
@@ -88,16 +120,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release and Upload Assets
-        if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true'
+        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: | # Use a multi-line string to list multiple files
+          files: |
             fraidex.json
             fraidex.min.json
+            fraidex.min.json.gz
+            fraidex.min.json.br
           tag_name: data-latest
           name: "Latest FreeDNS Data"
           body: |
             Latest FreeDNS domain registry data.
+            - `fraidex.json`: Human-readable, indented version.
+            - `fraidex.min.json`: Minified version.
+            - `fraidex.min.json.gz`: Gzip compressed minified version.
+            - `fraidex.min.json.br`: Brotli compressed minified version.
             Updated: ${{ steps.current_time.outputs.time }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
