@@ -1,0 +1,41 @@
+name: FreeDNS Registry
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml # lxml is a fast HTML parser
+
+      - name: Run scraper script
+        run: python scraper.py
+
+      - name: Commit and push if changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "update fraidex.json"
+          commit_user_name: "GitHub Actions Bot"
+          commit_user_email: "actions@github.com"
+          commit_author: "GitHub Actions Bot <actions@github.com>"
+          file_pattern: "fraidex.json"
+          push_options: "--force"
+          skip_dirty_check: false
+          skip_fetch: true
