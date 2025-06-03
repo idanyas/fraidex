@@ -1,15 +1,15 @@
-name: FreeDNS Registry
+name: FreeDNS Registry Data Publisher
 
 on:
   schedule:
-    - cron: "0 * * * *"
-  workflow_dispatch:
+    - cron: "0 * * * *" # Runs every hour
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  scrape:
+  scrape_and_release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Needed to create releases and tags
 
     steps:
       - name: Checkout repository
@@ -23,19 +23,57 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml # lxml is a fast HTML parser
+          pip install requests beautifulsoup4 lxml
 
-      - name: Run script
-        run: python parser.py
+      - name: Run parser script
+        id: parser # Give the step an id to potentially reference its outputs if needed
+        run: python parser.py # Assuming your script is correctly named parser.py
 
-      - name: Commit and push if changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Check if fraidex.json was generated
+        id: check_json
+        run: |
+          if [ -f fraidex.json ]; then
+            echo "Generated fraidex.json found."
+            echo "exists=true" >> $GITHUB_OUTPUT
+            # Optional: Check if the file has content (is not empty)
+            if [ -s fraidex.json ]; then
+              echo "has_content=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_content=false" >> $GITHUB_OUTPUT
+              echo "Warning: fraidex.json is empty."
+            fi
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Error: fraidex.json not found after running parser.py!"
+            exit 1 # Fail the workflow if the primary artifact isn't generated
+          fi
+
+      - name: Set current time for release body
+        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
+        id: current_time
+        run: echo "time=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+
+      # Important: Delete the previous 'data-latest' release and tag to ensure this new one becomes 'the' data-latest
+      # This keeps the download URL stable for the 'data-latest' concept.
+      - name: Delete previous data-latest release and tag
+        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
+        run: |
+          echo "Attempting to delete previous 'data-latest' release and tag..."
+          gh release delete data-latest -y --cleanup-tag || echo "No previous 'data-latest' release or tag to delete, or deletion failed (which is fine if it didn't exist)."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub CLI needs this
+
+      - name: Create GitHub Release and Upload Asset
+        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
+        uses: softprops/action-gh-release@v2 # Using v2 for latest features/fixes
         with:
-          commit_message: "update fraidex.json"
-          commit_user_name: "GitHub Actions Bot"
-          commit_user_email: "actions@github.com"
-          commit_author: "GitHub Actions Bot <actions@github.com>"
-          file_pattern: "fraidex.json"
-          push_options: "--force"
-          skip_dirty_check: false
-          skip_fetch: true
+          files: fraidex.json # The file to upload
+          tag_name: data-latest # Consistent tag name
+          name: "Latest FreeDNS Data" # Release title
+          body: | # Release description
+            Latest FreeDNS domain registry data.
+            Updated: ${{ steps.current_time.outputs.time }}
+          # 'make_latest: true' is the default for non-prereleases, ensuring this appears as "Latest" if no newer non-prerelease exists.
+          # By deleting and recreating the 'data-latest' tag, we ensure this specific asset URL is always the newest for that tag.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
