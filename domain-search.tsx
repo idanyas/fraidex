@@ -22,16 +22,30 @@ import {
   Tag,
   Sun,
   Moon,
+  Loader2, // For loading indicator
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   Pagination,
   PaginationContent,
@@ -40,21 +54,52 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
-// Types for easy backend integration
+const DATA_URL =
+  "https://github.com/idanyas/fraidex/releases/download/data-latest/fraidex.min.json.br"
+
+// Interface for the raw data structure from fraidex.min.json.br
+interface FraidexDomainEntry {
+  domain_name: string
+  domain_id: number
+  hosts_in_use: number
+  website: string | null
+  status: string // "public" or "private" as strings from source
+  owner_name: string
+  owner_id: number
+  age_raw_text: string
+  date_added: string | null
+  age_days: number | null
+  source_page_number: number
+}
+
+// Updated Domain interface for frontend use
 interface Domain {
-  id: string
-  name: string
+  id: string // domain_id as string
+  name: string // domain_name
   status: "public" | "private"
-  hosts: number
-  ageInDays: number
-  tld: string
-  length: number
-  registrar?: string
-  category?: string
-  domainLevel: number
+  hosts: number // hosts_in_use
+  ageInDays: number // age_days (handle null)
+  tld: string // Derived from domain_name
+  length: number // Derived from domain_name.length
+  domainLevel: number // Derived from tld
+  website?: string | null // Optional: from FraidexDomainEntry
+  ownerName?: string // Optional: from FraidexDomainEntry
+  ownerId?: number // Optional: from FraidexDomainEntry
+  dateAdded?: string | null // Optional: from FraidexDomainEntry
 }
 
 interface NumericFilter {
@@ -75,7 +120,6 @@ interface FilterState {
   sortOrder: "asc" | "desc"
 }
 
-// Preset filter options for quick selection
 const HOST_PRESETS = [
   { label: "Small (1-100)", min: 1, max: 100 },
   { label: "Medium (101-1K)", min: 101, max: 1000 },
@@ -90,175 +134,13 @@ const AGE_PRESETS = [
   { label: "Legacy (10+ years)", min: 3651, max: null },
 ]
 
-// Function to determine domain level
+// Function to determine domain level from the extracted TLD part
 const getDomainLevel = (tld: string): number => {
+  if (!tld) return 0
   return tld.split(".").length
 }
 
-// Mock data generator with more TLDs including multi-level domains
-const generateMockDomains = (): Domain[] => {
-  const tlds = [
-    // First level TLDs
-    "com",
-    "org",
-    "net",
-    "io",
-    "co",
-    "ai",
-    "dev",
-    "app",
-    "tech",
-    "biz",
-    "info",
-    "me",
-    "tv",
-    "cc",
-    "ly",
-    "gg",
-    "xyz",
-    "online",
-    "site",
-    "store",
-    "blog",
-    "news",
-    "shop",
-    "cloud",
-    "digital",
-    "agency",
-    "studio",
-    "design",
-    "pro",
-    "expert",
-    "guru",
-    "ninja",
-    "cool",
-    "best",
-    "top",
-    "live",
-    "world",
-    "today",
-    "global",
-    "international",
-    "solutions",
-    "services",
-    "consulting",
-
-    // Second level TLDs
-    "co.uk",
-    "com.au",
-    "co.jp",
-    "co.za",
-    "com.br",
-    "co.in",
-    "com.mx",
-    "co.nz",
-    "com.sg",
-    "co.kr",
-    "com.ar",
-    "co.il",
-    "com.tr",
-    "co.th",
-    "com.my",
-    "co.id",
-    "com.ph",
-    "co.ve",
-    "com.pe",
-    "com.co",
-    "com.ng",
-
-    // Third level TLDs (rare but exist)
-    "com.co.uk",
-    "net.co.uk",
-    "org.co.uk",
-  ]
-
-  const categories = [
-    "Technology",
-    "Business",
-    "Education",
-    "Entertainment",
-    "News",
-    "E-commerce",
-    "Finance",
-    "Healthcare",
-    "Gaming",
-    "Social",
-  ]
-  const registrars = ["GoDaddy", "Namecheap", "Cloudflare", "Google Domains", "Vercel", "AWS Route 53"]
-
-  const domains: Domain[] = []
-  const sampleNames = [
-    "example",
-    "testsite",
-    "mycompany",
-    "techstartup",
-    "blogsite",
-    "portfolio",
-    "ecommerce",
-    "newsportal",
-    "socialnet",
-    "gamedev",
-    "fintech",
-    "healthapp",
-    "eduplatform",
-    "travelguide",
-    "foodblog",
-    "musicstream",
-    "photoapp",
-    "chatapp",
-    "cloudservice",
-    "dataanalytics",
-    "cybersecurity",
-    "blockchain",
-    "aiplatform",
-    "iotdevice",
-    "mobileapp",
-    "webapp",
-    "marketplace",
-    "dashboard",
-    "analytics",
-    "monitoring",
-    "automation",
-    "integration",
-    "api",
-    "service",
-    "platform",
-    "network",
-    "system",
-    "solution",
-    "tool",
-    "widget",
-    "component",
-    "framework",
-    "library",
-    "resource",
-    "community",
-  ]
-
-  for (let i = 0; i < 1000; i++) {
-    const baseName = sampleNames[Math.floor(Math.random() * sampleNames.length)]
-    const suffix = Math.random() > 0.6 ? Math.floor(Math.random() * 9999) : ""
-    const tld = tlds[Math.floor(Math.random() * tlds.length)]
-    const name = `${baseName}${suffix}.${tld}`
-
-    domains.push({
-      id: `domain-${i}`,
-      name,
-      status: Math.random() > 0.3 ? "public" : "private",
-      hosts: Math.floor(Math.random() * 1000000) + 1,
-      ageInDays: Math.floor(Math.random() * 10000) + 1,
-      tld,
-      length: name.length,
-      registrar: registrars[Math.floor(Math.random() * registrars.length)],
-      category: categories[Math.floor(Math.random() * categories.length)],
-      domainLevel: getDomainLevel(tld),
-    })
-  }
-
-  return domains.sort((a, b) => b.hosts - a.hosts)
-}
-
-// Multi-select component for TLDs
+// Multi-select component for TLDs (no changes needed internally)
 function TldMultiSelect({
   options,
   selected,
@@ -271,7 +153,9 @@ function TldMultiSelect({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
-  const filteredOptions = options.filter((option) => option.toLowerCase().includes(search.toLowerCase()))
+  const filteredOptions = options.filter((option) =>
+    option.toLowerCase().includes(search.toLowerCase())
+  )
 
   const toggleSelection = (value: string) => {
     if (selected.includes(value)) {
@@ -295,20 +179,32 @@ function TldMultiSelect({
               <Tag className="w-4 h-4" />
               {selected.length === 0
                 ? "Select TLDs..."
-                : `${selected.length} TLD${selected.length > 1 ? "s" : ""} selected`}
+                : `${selected.length} TLD${
+                    selected.length > 1 ? "s" : ""
+                  } selected`}
             </div>
             <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-full p-0">
           <Command>
-            <CommandInput placeholder="Search TLDs..." value={search} onValueChange={setSearch} />
+            <CommandInput
+              placeholder="Search TLDs..."
+              value={search}
+              onValueChange={setSearch}
+            />
             <CommandList>
               <CommandEmpty>No TLD found.</CommandEmpty>
               <CommandGroup>
                 {filteredOptions.map((option) => (
-                  <CommandItem key={option} onSelect={() => toggleSelection(option)}>
-                    <Checkbox checked={selected.includes(option)} className="mr-2" />
+                  <CommandItem
+                    key={option}
+                    onSelect={() => toggleSelection(option)}
+                  >
+                    <Checkbox
+                      checked={selected.includes(option)}
+                      className="mr-2"
+                    />
                     <Tag className="w-3 h-3 mr-1" />.{option}
                   </CommandItem>
                 ))}
@@ -339,7 +235,7 @@ function TldMultiSelect({
   )
 }
 
-// Numeric range input component
+// Numeric range input component (no changes needed internally)
 function NumericRangeFilter({
   label,
   filter,
@@ -392,7 +288,9 @@ function NumericRangeFilter({
         </Label>
         <Checkbox
           checked={filter.enabled}
-          onCheckedChange={(checked) => onChange({ ...filter, enabled: Boolean(checked) })}
+          onCheckedChange={(checked) =>
+            onChange({ ...filter, enabled: Boolean(checked) })
+          }
         />
       </div>
 
@@ -400,7 +298,10 @@ function NumericRangeFilter({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label htmlFor={`${label}-min`} className="text-xs text-muted-foreground">
+              <Label
+                htmlFor={`${label}-min`}
+                className="text-xs text-muted-foreground"
+              >
                 Min
               </Label>
               <Input
@@ -413,7 +314,10 @@ function NumericRangeFilter({
               />
             </div>
             <div>
-              <Label htmlFor={`${label}-max`} className="text-xs text-muted-foreground">
+              <Label
+                htmlFor={`${label}-max`}
+                className="text-xs text-muted-foreground"
+              >
                 Max
               </Label>
               <Input
@@ -429,7 +333,9 @@ function NumericRangeFilter({
 
           {presets && (
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Quick Select:</Label>
+              <Label className="text-xs text-muted-foreground">
+                Quick Select:
+              </Label>
               <div className="grid grid-cols-1 gap-1">
                 {presets.map((preset) => (
                   <Button
@@ -448,8 +354,18 @@ function NumericRangeFilter({
 
           {(filter.min !== null || filter.max !== null) && (
             <div className="text-xs text-muted-foreground">
-              Range: {filter.min || 0} - {filter.max || "∞"}
-              {formatValue && ` (${formatValue(filter.min || 0)} - ${filter.max ? formatValue(filter.max) : "∞"})`}
+              Range:{" "}
+              {filter.min === null
+                ? 0
+                : formatValue
+                ? formatValue(filter.min)
+                : filter.min}{" "}
+              -{" "}
+              {filter.max === null
+                ? "∞"
+                : formatValue
+                ? formatValue(filter.max)
+                : filter.max}
             </div>
           )}
         </div>
@@ -458,8 +374,13 @@ function NumericRangeFilter({
   )
 }
 
-// Theme toggle component with better visibility and contrast
-function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+function ThemeToggle({
+  isDark,
+  onToggle,
+}: {
+  isDark: boolean
+  onToggle: () => void
+}) {
   return (
     <Button
       variant={isDark ? "outline" : "default"}
@@ -484,9 +405,12 @@ function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => vo
 }
 
 export default function Component() {
-  const [domains] = useState<Domain[]>(generateMockDomains())
+  const [allDomains, setAllDomains] = useState<Domain[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+
   const [currentPage, setCurrentPage] = useState(1)
-  const [isDarkMode, setIsDarkMode] = useState(true) // Default to dark mode
+  const [isDarkMode, setIsDarkMode] = useState(true)
   const [filters, setFilters] = useState<FilterState>({
     search: "",
     status: [],
@@ -501,107 +425,170 @@ export default function Component() {
 
   const itemsPerPage = 15
 
-  // Apply dark mode class to document with smooth transition
   useEffect(() => {
-    // Add transition class for smooth animation
-    document.documentElement.style.transition = "background-color 0.3s ease, color 0.3s ease"
+    const fetchData = async () => {
+      setIsLoading(true)
+      setFetchError(null)
+      try {
+        const response = await fetch(DATA_URL)
+        if (!response.ok) {
+          throw new Error(
+            `HTTP error! status: ${response.status} - ${response.statusText}`
+          )
+        }
+        const rawData: FraidexDomainEntry[] = await response.json()
 
+        const processedDomains: Domain[] = rawData.map((entry) => {
+          const domainName = entry.domain_name
+          let tld = ""
+          const dotIndex = domainName.indexOf(".")
+
+          if (dotIndex !== -1 && dotIndex < domainName.length - 1) {
+            tld = domainName.substring(dotIndex + 1)
+          } else {
+            tld = domainName // or handle as error/default if domain_name can be invalid
+          }
+
+          return {
+            id: entry.domain_id.toString(),
+            name: domainName,
+            status:
+              entry.status.toLowerCase() === "public" ? "public" : "private",
+            hosts: entry.hosts_in_use,
+            ageInDays: entry.age_days ?? 0,
+            tld: tld,
+            length: domainName.length,
+            domainLevel: getDomainLevel(tld),
+            website: entry.website,
+            ownerName: entry.owner_name,
+            ownerId: entry.owner_id,
+            dateAdded: entry.date_added,
+          }
+        })
+        setAllDomains(processedDomains)
+      } catch (e) {
+        console.error("Failed to fetch or process domain data:", e)
+        setFetchError(
+          e instanceof Error
+            ? e.message
+            : "An unknown error occurred while fetching data."
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.style.transition =
+      "background-color 0.3s ease, color 0.3s ease"
     if (isDarkMode) {
       document.documentElement.classList.add("dark")
     } else {
       document.documentElement.classList.remove("dark")
     }
-
-    // Clean up transition after animation completes
     const timer = setTimeout(() => {
       document.documentElement.style.transition = ""
     }, 300)
-
     return () => clearTimeout(timer)
   }, [isDarkMode])
 
-  // Get unique values for filter options
-  const uniqueTlds = useMemo(() => [...new Set(domains.map((d) => d.tld))].sort(), [domains])
+  const uniqueTlds = useMemo(
+    () => [...new Set(allDomains.map((d) => d.tld))].sort(),
+    [allDomains]
+  )
   const uniqueDomainLevels = useMemo(
-    () => [...new Set(domains.map((d) => d.domainLevel))].sort((a, b) => a - b),
-    [domains],
+    () =>
+      [...new Set(allDomains.map((d) => d.domainLevel))].sort((a, b) => a - b),
+    [allDomains]
   )
 
-  // Filter and sort domains
   const filteredDomains = useMemo(() => {
-    const filtered = domains.filter((domain) => {
-      // Search filter
-      if (filters.search && !domain.name.toLowerCase().includes(filters.search.toLowerCase())) {
+    const filtered = allDomains.filter((domain) => {
+      if (
+        filters.search &&
+        !domain.name.toLowerCase().includes(filters.search.toLowerCase())
+      ) {
         return false
       }
-
-      // Status filter
-      if (filters.status.length > 0 && !filters.status.includes(domain.status)) {
+      if (
+        filters.status.length > 0 &&
+        !filters.status.includes(domain.status)
+      ) {
         return false
       }
-
-      // TLD filter
       if (filters.tlds.length > 0 && !filters.tlds.includes(domain.tld)) {
         return false
       }
-
-      // Domain level filter
-      if (filters.domainLevels.length > 0 && !filters.domainLevels.includes(domain.domainLevel)) {
+      if (
+        filters.domainLevels.length > 0 &&
+        !filters.domainLevels.includes(domain.domainLevel)
+      ) {
         return false
       }
-
-      // Numeric filters
       if (filters.hosts.enabled) {
-        if (filters.hosts.min !== null && domain.hosts < filters.hosts.min) return false
-        if (filters.hosts.max !== null && domain.hosts > filters.hosts.max) return false
+        if (filters.hosts.min !== null && domain.hosts < filters.hosts.min)
+          return false
+        if (filters.hosts.max !== null && domain.hosts > filters.hosts.max)
+          return false
       }
-
       if (filters.age.enabled) {
-        if (filters.age.min !== null && domain.ageInDays < filters.age.min) return false
-        if (filters.age.max !== null && domain.ageInDays > filters.age.max) return false
+        if (filters.age.min !== null && domain.ageInDays < filters.age.min)
+          return false
+        if (filters.age.max !== null && domain.ageInDays > filters.age.max)
+          return false
       }
-
       if (filters.length.enabled) {
-        if (filters.length.min !== null && domain.length < filters.length.min) return false
-        if (filters.length.max !== null && domain.length > filters.length.max) return false
+        if (filters.length.min !== null && domain.length < filters.length.min)
+          return false
+        if (filters.length.max !== null && domain.length > filters.length.max)
+          return false
       }
-
       return true
     })
 
-    // Sort
     filtered.sort((a, b) => {
       let aVal: any = a[filters.sortBy as keyof Domain]
       let bVal: any = b[filters.sortBy as keyof Domain]
 
-      if (typeof aVal === "string") {
-        aVal = aVal.toLowerCase()
-        bVal = bVal.toLowerCase()
+      if (typeof aVal === "string") aVal = aVal.toLowerCase()
+      if (typeof bVal === "string") bVal = bVal.toLowerCase()
+
+      // Ensure numbers are compared as numbers
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return filters.sortOrder === "asc" ? aVal - bVal : bVal - aVal
       }
 
       if (filters.sortOrder === "asc") {
-        return aVal > bVal ? 1 : -1
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
       } else {
-        return aVal < bVal ? 1 : -1
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0
       }
     })
-
     return filtered
-  }, [domains, filters])
+  }, [allDomains, filters])
 
-  // Pagination
   const totalPages = Math.ceil(filteredDomains.length / itemsPerPage)
-  const paginatedDomains = filteredDomains.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  const paginatedDomains = filteredDomains.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
 
   const updateFilter = (key: keyof FilterState, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
     setCurrentPage(1)
   }
 
-  const toggleArrayFilter = (key: "status" | "domainLevels", value: string | number) => {
+  const toggleArrayFilter = (
+    key: "status" | "domainLevels",
+    value: string | number
+  ) => {
     setFilters((prev) => ({
       ...prev,
-      [key]: prev[key].includes(value) ? prev[key].filter((item) => item !== value) : [...prev[key], value],
+      [key]: prev[key].includes(value as never)
+        ? prev[key].filter((item) => item !== value)
+        : [...prev[key], value as never],
     }))
     setCurrentPage(1)
   }
@@ -645,6 +632,7 @@ export default function Component() {
   }
 
   const getDomainLevelLabel = (level: number) => {
+    if (level <= 0) return "N/A"
     switch (level) {
       case 1:
         return "1st Level (.com, .org)"
@@ -655,6 +643,44 @@ export default function Component() {
       default:
         return `${level}th Level`
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background transition-colors duration-300 ease-in-out flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-lg text-foreground">
+            Loading domain data, please wait...
+          </p>
+          <p className="text-sm text-muted-foreground">
+            (This may take a moment for the first load)
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-background transition-colors duration-300 ease-in-out flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center gap-2">
+              <X className="h-6 w-6" /> Error Loading Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-destructive-foreground">
+              Failed to load domain data. Please try again later.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Details: {fetchError}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -671,7 +697,10 @@ export default function Component() {
                     Filters
                   </div>
                   {activeFiltersCount > 0 && (
-                    <Badge variant="secondary" className="flex items-center gap-1">
+                    <Badge
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
                       <Hash className="w-3 h-3" />
                       {activeFiltersCount}
                     </Badge>
@@ -715,10 +744,19 @@ export default function Component() {
                         <Checkbox
                           id={status}
                           checked={filters.status.includes(status)}
-                          onCheckedChange={() => toggleArrayFilter("status", status)}
+                          onCheckedChange={() =>
+                            toggleArrayFilter("status", status)
+                          }
                         />
-                        <Label htmlFor={status} className="capitalize text-sm flex items-center gap-2">
-                          {status === "public" ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        <Label
+                          htmlFor={status}
+                          className="capitalize text-sm flex items-center gap-2"
+                        >
+                          {status === "public" ? (
+                            <Eye className="w-3 h-3" />
+                          ) : (
+                            <EyeOff className="w-3 h-3" />
+                          )}
                           {status}
                         </Label>
                       </div>
@@ -738,7 +776,9 @@ export default function Component() {
                     <TldMultiSelect
                       options={uniqueTlds}
                       selected={filters.tlds}
-                      onSelectionChange={(selected) => updateFilter("tlds", selected)}
+                      onSelectionChange={(selected) =>
+                        updateFilter("tlds", selected)
+                      }
                     />
                   </div>
                 </div>
@@ -757,9 +797,14 @@ export default function Component() {
                         <Checkbox
                           id={`level-${level}`}
                           checked={filters.domainLevels.includes(level)}
-                          onCheckedChange={() => toggleArrayFilter("domainLevels", level)}
+                          onCheckedChange={() =>
+                            toggleArrayFilter("domainLevels", level)
+                          }
                         />
-                        <Label htmlFor={`level-${level}`} className="text-sm flex items-center gap-2">
+                        <Label
+                          htmlFor={`level-${level}`}
+                          className="text-sm flex items-center gap-2"
+                        >
                           <Hash className="w-3 h-3" />
                           {getDomainLevelLabel(level)}
                         </Label>
@@ -770,7 +815,6 @@ export default function Component() {
 
                 <Separator />
 
-                {/* Host Count Filter */}
                 <NumericRangeFilter
                   label="Host Count"
                   filter={filters.hosts}
@@ -782,7 +826,6 @@ export default function Component() {
 
                 <Separator />
 
-                {/* Age Filter */}
                 <NumericRangeFilter
                   label="Domain Age (days)"
                   filter={filters.age}
@@ -794,7 +837,6 @@ export default function Component() {
 
                 <Separator />
 
-                {/* Length Filter */}
                 <NumericRangeFilter
                   label="Domain Length"
                   filter={filters.length}
@@ -804,7 +846,11 @@ export default function Component() {
 
                 <Separator />
 
-                <Button onClick={clearFilters} variant="outline" className="w-full mt-4 flex items-center gap-2">
+                <Button
+                  onClick={clearFilters}
+                  variant="outline"
+                  className="w-full mt-4 flex items-center gap-2"
+                >
                   <X className="w-4 h-4" />
                   Clear All Filters
                 </Button>
@@ -824,15 +870,17 @@ export default function Component() {
                     </CardTitle>
                     <CardDescription className="flex items-center gap-2">
                       <Hash className="w-4 h-4" />
-                      Found {filteredDomains.length.toLocaleString()} domains matching your criteria
+                      Found {filteredDomains.length.toLocaleString()} domains
+                      matching your criteria
                     </CardDescription>
                   </div>
-                  {/* Theme toggle moved here */}
-                  <ThemeToggle isDark={isDarkMode} onToggle={() => setIsDarkMode(!isDarkMode)} />
+                  <ThemeToggle
+                    isDark={isDarkMode}
+                    onToggle={() => setIsDarkMode(!isDarkMode)}
+                  />
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Explicit Sorting Controls */}
                 <div className="mb-4 flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <ChevronDown className="w-4 h-4" />
@@ -847,11 +895,21 @@ export default function Component() {
                           className="w-48 justify-between text-left font-normal"
                         >
                           <div className="flex items-center gap-2">
-                            {filters.sortBy === "hosts" && <Server className="w-4 h-4" />}
-                            {filters.sortBy === "ageInDays" && <Clock className="w-4 h-4" />}
-                            {filters.sortBy === "name" && <Globe className="w-4 h-4" />}
-                            {filters.sortBy === "length" && <Ruler className="w-4 h-4" />}
-                            {filters.sortBy === "status" && <Shield className="w-4 h-4" />}
+                            {filters.sortBy === "hosts" && (
+                              <Server className="w-4 h-4" />
+                            )}
+                            {filters.sortBy === "ageInDays" && (
+                              <Clock className="w-4 h-4" />
+                            )}
+                            {filters.sortBy === "name" && (
+                              <Globe className="w-4 h-4" />
+                            )}
+                            {filters.sortBy === "length" && (
+                              <Ruler className="w-4 h-4" />
+                            )}
+                            {filters.sortBy === "status" && (
+                              <Shield className="w-4 h-4" />
+                            )}
                             <span>
                               {filters.sortBy === "hosts" && "Host Count"}
                               {filters.sortBy === "ageInDays" && "Domain Age"}
@@ -878,7 +936,9 @@ export default function Component() {
                                 )}
                               </CommandItem>
                               <CommandItem
-                                onSelect={() => updateFilter("sortBy", "ageInDays")}
+                                onSelect={() =>
+                                  updateFilter("sortBy", "ageInDays")
+                                }
                                 className="flex items-center gap-2"
                               >
                                 <Clock className="w-4 h-4" />
@@ -898,7 +958,9 @@ export default function Component() {
                                 )}
                               </CommandItem>
                               <CommandItem
-                                onSelect={() => updateFilter("sortBy", "length")}
+                                onSelect={() =>
+                                  updateFilter("sortBy", "length")
+                                }
                                 className="flex items-center gap-2"
                               >
                                 <Ruler className="w-4 h-4" />
@@ -908,7 +970,9 @@ export default function Component() {
                                 )}
                               </CommandItem>
                               <CommandItem
-                                onSelect={() => updateFilter("sortBy", "status")}
+                                onSelect={() =>
+                                  updateFilter("sortBy", "status")
+                                }
                                 className="flex items-center gap-2"
                               >
                                 <Shield className="w-4 h-4" />
@@ -925,7 +989,12 @@ export default function Component() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updateFilter("sortOrder", filters.sortOrder === "asc" ? "desc" : "asc")}
+                      onClick={() =>
+                        updateFilter(
+                          "sortOrder",
+                          filters.sortOrder === "asc" ? "desc" : "asc"
+                        )
+                      }
                       className="flex items-center gap-1"
                     >
                       {filters.sortOrder === "asc" ? (
@@ -978,21 +1047,45 @@ export default function Component() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Globe className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">{domain.name}</span>
-                              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                              <span className="font-medium">
+                                {domain.website ? (
+                                  <a
+                                    href={domain.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hover:underline"
+                                  >
+                                    {domain.name}
+                                  </a>
+                                ) : (
+                                  domain.name
+                                )}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="text-xs flex items-center gap-1"
+                              >
                                 <Ruler className="w-3 h-3" />
                                 {domain.length}
                               </Badge>
-                              {domain.domainLevel > 1 && (
-                                <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                                  <Layers className="w-3 h-3" />L{domain.domainLevel}
+                              {domain.domainLevel > 0 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs flex items-center gap-1"
+                                >
+                                  <Layers className="w-3 h-3" />L
+                                  {domain.domainLevel}
                                 </Badge>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
                             <Badge
-                              variant={domain.status === "public" ? "default" : "secondary"}
+                              variant={
+                                domain.status === "public"
+                                  ? "default"
+                                  : "secondary"
+                              }
                               className="flex items-center gap-1 w-fit"
                             >
                               {domain.status === "public" ? (
@@ -1017,11 +1110,20 @@ export default function Component() {
                           </TableCell>
                         </TableRow>
                       ))}
+                      {paginatedDomains.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={4}
+                            className="text-center py-10 text-muted-foreground"
+                          >
+                            No domains found matching your criteria.
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </div>
 
-                {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="mt-6">
                     <Pagination>
@@ -1031,38 +1133,66 @@ export default function Component() {
                             href="#"
                             onClick={(e) => {
                               e.preventDefault()
-                              if (currentPage > 1) setCurrentPage(currentPage - 1)
+                              if (currentPage > 1)
+                                setCurrentPage(currentPage - 1)
                             }}
-                            className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                            className={
+                              currentPage === 1
+                                ? "pointer-events-none opacity-50"
+                                : ""
+                            }
                           />
                         </PaginationItem>
 
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                          const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i
-                          return (
-                            <PaginationItem key={pageNum}>
-                              <PaginationLink
-                                href="#"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  setCurrentPage(pageNum)
-                                }}
-                                isActive={currentPage === pageNum}
-                              >
-                                {pageNum}
-                              </PaginationLink>
-                            </PaginationItem>
-                          )
-                        })}
+                        {/* Simplified Pagination Logic for brevity - could be more advanced */}
+                        {Array.from(
+                          { length: Math.min(5, totalPages) },
+                          (_, i) => {
+                            let pageNum = i + 1
+                            if (totalPages > 5) {
+                              if (currentPage <= 3) {
+                                // Show 1, 2, 3, 4, 5
+                                pageNum = i + 1
+                              } else if (currentPage >= totalPages - 2) {
+                                // Show last 5 pages
+                                pageNum = totalPages - 4 + i
+                              } else {
+                                // Show current page in middle
+                                pageNum = currentPage - 2 + i
+                              }
+                            }
+                            if (pageNum > totalPages || pageNum < 1) return null
+
+                            return (
+                              <PaginationItem key={pageNum}>
+                                <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    setCurrentPage(pageNum)
+                                  }}
+                                  isActive={currentPage === pageNum}
+                                >
+                                  {pageNum}
+                                </PaginationLink>
+                              </PaginationItem>
+                            )
+                          }
+                        )}
 
                         <PaginationItem>
                           <PaginationNext
                             href="#"
                             onClick={(e) => {
                               e.preventDefault()
-                              if (currentPage < totalPages) setCurrentPage(currentPage + 1)
+                              if (currentPage < totalPages)
+                                setCurrentPage(currentPage + 1)
                             }}
-                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                            className={
+                              currentPage === totalPages
+                                ? "pointer-events-none opacity-50"
+                                : ""
+                            }
                           />
                         </PaginationItem>
                       </PaginationContent>
