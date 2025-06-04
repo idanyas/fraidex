@@ -2,7 +2,7 @@ name: Publish Fraidex Data to npm
 
 on:
   schedule:
-    - cron: "0 3 * * *" # Runs daily at 3 AM UTC
+    - cron: "0 * * * *" # Runs every hour.
   workflow_dispatch: # Allows manual triggering from the Actions tab
   push:
     branches:
