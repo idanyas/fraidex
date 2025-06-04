@@ -56,7 +56,7 @@ jobs:
           # IMPORTANT: Replace '@YOUR_NPM_USERNAME_OR_ORG' with your actual npm username or organization scope.
           # If you don't use a scope, ensure the package name is unique on npm.
           # Example: PACKAGE_NAME="fraidex-data" or PACKAGE_NAME="@my-org/fraidex-data"
-          PACKAGE_NAME="@${{ github.repository_owner }}/fraidex-data" # Default, adjust if needed
+          PACKAGE_NAME="@idanya/fraidex" # Default, adjust if needed
 
           echo "Preparing package: ${PACKAGE_NAME} version ${PACKAGE_VERSION}"
 
