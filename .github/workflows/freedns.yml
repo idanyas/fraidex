@@ -47,10 +47,10 @@ jobs:
           mkdir -p data-package
           mv fraidex.json data-package/
 
-          # Versioning: Using YYYY.M.D.RUN_NUMBER (e.g., 2024.7.25.101)
-          # Date components are UTC. Month and day do not have leading zeros.
-          VERSION_DATE=$(date -u +'%Y.%-m.%-d') 
-          PACKAGE_VERSION="${VERSION_DATE}.${{ github.run_number }}"
+          # Versioning: Using 0.0.0-YYYYMMDD.RUN_NUMBER (e.g., 0.0.0-20250604.24)
+          # Date components are UTC. Month and day will have leading zeros if single digit.
+          VERSION_DATE_SUFFIX=$(date -u +'%Y%m%d') 
+          PACKAGE_VERSION="0.0.0-${VERSION_DATE_SUFFIX}.${{ github.run_number }}"
 
           # Define the npm package name.
           # IMPORTANT: Replace '@YOUR_NPM_USERNAME_OR_ORG' with your actual npm username or organization scope.
@@ -83,7 +83,7 @@ jobs:
               "fraidex"
             ],
             "author": "${{ github.repository_owner }} (https://github.com/${{ github.repository_owner }})",
-            "license": "MIT", 
+            "license": "MIT",
             "publishConfig": {
               "access": "public"
             }
