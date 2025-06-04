@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/popover"
 
 const DATA_URL =
-  "https://github.com/idanyas/fraidex/releases/download/data-latest/fraidex.min.json.br"
+  "https://cdn.jsdelivr.net/npm/@idanya/fraidex/fraidex.json"
 
 // Interface for the raw data structure from fraidex.min.json.br
 interface FraidexDomainEntry {
