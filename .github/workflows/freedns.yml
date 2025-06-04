@@ -1,15 +1,20 @@
-name: FreeDNS Registry Data Publisher
+name: Publish Fraidex Data to npm
 
 on:
   schedule:
-    - cron: "0 * * * *" # Runs every hour
-  workflow_dispatch: # Allows manual triggering
+    - cron: "0 3 * * *" # Runs daily at 3 AM UTC
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+  push:
+    branches:
+      - main # Or your default branch (e.g., master)
+    paths:
+      - "parser.py" # Only trigger on push if the parser script itself changes
 
 jobs:
-  scrape_and_release:
+  build-and-publish-data:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to create releases and tags
+      contents: read # Required to checkout the repository
 
     steps:
       - name: Checkout repository
@@ -18,124 +23,90 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11" # Using a specific Python version
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
-          sudo apt-get update && sudo apt-get install -y brotli # Install brotli CLI tool
 
-      - name: Run parser script
-        id: parser
-        run: python parser.py # This should generate fraidex.json (indented)
-
-      - name: Check if fraidex.json was generated
-        id: check_json
+      - name: Run parser to generate fraidex.json
+        id: run_parser
         run: |
-          if [ -f fraidex.json ]; then
-            echo "Generated fraidex.json found."
-            echo "exists=true" >> $GITHUB_OUTPUT
-            if [ -s fraidex.json ]; then
-              echo "has_content=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_content=false" >> $GITHUB_OUTPUT
-              echo "Warning: fraidex.json is empty."
-            fi
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Error: fraidex.json not found after running parser.py!"
+          echo "Running parser.py to generate fraidex.json..."
+          python parser.py
+          if [ ! -f "fraidex.json" ]; then
+            echo "Error: fraidex.json was not created by parser.py!"
             exit 1
           fi
+          echo "fraidex.json created successfully."
 
-      - name: Create minified JSON version
-        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
+      - name: Prepare data package for npm
+        id: package_prep
         run: |
-          python -m json.tool fraidex.json fraidex.min.json --no-indent
-          echo "Created fraidex.min.json"
+          mkdir -p data-package
+          mv fraidex.json data-package/
 
-      - name: Check if fraidex.min.json was generated
-        if: steps.check_json.outputs.exists == 'true' && steps.check_json.outputs.has_content == 'true'
-        id: check_min_json
-        run: |
-          if [ -f fraidex.min.json ]; then
-            echo "Generated fraidex.min.json found."
-            echo "exists=true" >> $GITHUB_OUTPUT
-            if [ -s fraidex.min.json ]; then
-              echo "has_content=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_content=false" >> $GITHUB_OUTPUT
-              echo "Warning: fraidex.min.json is empty after minification."
-            fi
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Error: fraidex.min.json not found after minification step!"
-            exit 1
-          fi
+          # Versioning: Using YYYY.M.D.RUN_NUMBER (e.g., 2024.7.25.101)
+          # Date components are UTC. Month and day do not have leading zeros.
+          VERSION_DATE=$(date -u +'%Y.%-m.%-d') 
+          PACKAGE_VERSION="${VERSION_DATE}.${{ github.run_number }}"
 
-      - name: Create compressed versions (Gzip and Brotli)
-        if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true'
-        run: |
-          echo "Compressing fraidex.min.json..."
-          gzip -k -f -9 fraidex.min.json # -k (keep original), -f (force), -9 (best compression) -> fraidex.min.json.gz
-          brotli -k -f -Z fraidex.min.json # -k (keep original), -f (force), -Z (best quality) -> fraidex.min.json.br
-          echo "Created fraidex.min.json.gz and fraidex.min.json.br"
+          # Define the npm package name.
+          # If you don't use a scope, ensure the package name is unique on npm.
+          PACKAGE_NAME="@idanya/fraidex" # Default, adjust if needed
 
-      - name: Check if compressed files were generated
-        if: steps.check_min_json.outputs.exists == 'true' && steps.check_min_json.outputs.has_content == 'true' # Relies on min_json check
-        id: check_compressed_files
-        run: |
-          gz_exists=false
-          br_exists=false
-          if [ -f fraidex.min.json.gz ] && [ -s fraidex.min.json.gz ]; then
-            gz_exists=true
-            echo "Generated fraidex.min.json.gz found and has content."
-          else
-            echo "Error or empty: fraidex.min.json.gz not found or is empty after compression!"
-          fi
-          if [ -f fraidex.min.json.br ] && [ -s fraidex.min.json.br ]; then
-            br_exists=true
-            echo "Generated fraidex.min.json.br found and has content."
-          else
-            echo "Error or empty: fraidex.min.json.br not found or is empty after compression!"
-          fi
-          if [ "$gz_exists" = true ] && [ "$br_exists" = true ]; then
-            echo "all_compressed_exist=true" >> $GITHUB_OUTPUT
-          else
-            echo "all_compressed_exist=false" >> $GITHUB_OUTPUT
-            exit 1 # Fail if compressed files are missing/empty
-          fi
+          echo "Preparing package: ${PACKAGE_NAME} version ${PACKAGE_VERSION}"
 
-      - name: Set current time for release body
-        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
-        id: current_time
-        run: echo "time=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+          # Create package.json for the data package
+          cat <<EOF > data-package/package.json
+          {
+            "name": "${PACKAGE_NAME}",
+            "version": "${PACKAGE_VERSION}",
+            "description": "DNS domain data from freedns.afraid.org, generated by the fraidex parser. Updated periodically.",
+            "main": "fraidex.json",
+            "files": [
+              "fraidex.json"
+            ],
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/${{ github.repository }}.git"
+            },
+            "keywords": [
+              "dns",
+              "freedns",
+              "afraid.org",
+              "domains",
+              "data",
+              "fraidex"
+            ],
+            "author": "${{ github.repository_owner }} (https://github.com/${{ github.repository_owner }})",
+            "license": "MIT", # IMPORTANT: Please verify and choose an appropriate license for your data.
+            "publishConfig": {
+              "access": "public" # Change to "restricted" if publishing a private scoped package
+            }
+          }
+          EOF
+          echo "Generated data-package/package.json"
 
-      - name: Delete previous data-latest release and tag
-        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
-        run: |
-          echo "Attempting to delete previous 'data-latest' release and tag..."
-          gh release delete data-latest -y --cleanup-tag || echo "No previous 'data-latest' release or tag to delete, or deletion failed (which is fine if it didn't exist)."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create GitHub Release and Upload Assets
-        if: steps.check_compressed_files.outputs.all_compressed_exist == 'true'
-        uses: softprops/action-gh-release@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          files: |
-            fraidex.json
-            fraidex.min.json
-            fraidex.min.json.gz
-            fraidex.min.json.br
-          tag_name: data-latest
-          name: "Latest FreeDNS Data"
-          body: |
-            Latest FreeDNS domain registry data.
-            - `fraidex.json`: Human-readable, indented version.
-            - `fraidex.min.json`: Minified version.
-            - `fraidex.min.json.gz`: Gzip compressed minified version.
-            - `fraidex.min.json.br`: Brotli compressed minified version.
-            Updated: ${{ steps.current_time.outputs.time }}
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org/" # Point to the public npm registry
+
+      - name: Verify package contents (Dry Run)
+        working-directory: ./data-package
+        run: npm pack --dry-run # Shows what would be included in the package
+
+      - name: Publish to npm
+        # This condition ensures publishing only happens on scheduled runs, manual dispatches,
+        # or pushes to the 'main' (or your default) branch.
+        if: |
+          github.event_name == 'schedule' || 
+          github.event_name == 'workflow_dispatch' || 
+          (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        working-directory: ./data-package
+        run: npm publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
